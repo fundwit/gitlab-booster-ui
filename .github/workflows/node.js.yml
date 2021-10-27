@@ -1,0 +1,83 @@
+name: Node.js CI
+
+on: push
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Setup Node.js environment
+      uses: actions/setup-node@v2.1.1
+      env:
+        ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+      with:
+        node-version: 12.x
+
+    - uses: actions/checkout@v2
+
+    - name: Get dependencies
+      run: |
+        npm ci
+
+#    - name: Test
+#      run: |
+#        npm run test:unit
+#
+#        export PACT_BROKER_USERNAME=${{secrets.PACT_BROKER_USERNAME}}
+#        export PACT_BROKER_PASSWORD=${{secrets.PACT_BROKER_PASSWORD}}
+#        npm run test:pact
+
+    - name: Build
+      run: |
+        npm run build
+        mv dist .docker/
+
+    - name: Generte Build Info File
+      run:  |
+        timestamp=$(TZ='Asia/Shanghai' date -d today +"%Y-%m-%dT%H:%M:%S+08:00")
+        echo "BUILD_TIMESTAMP=${timestamp}" >> $GITHUB_ENV
+
+        cat >> .docker/dist/buildInfo.json <<EOF
+        {
+          "serviceInstance": "gitlab-ui-unspecified",
+          "serviceName": "gitlab-booster-ui",
+          "description": "web ui of gitlab-booster service",
+          "buildInfo": {
+            "buildTime": "${timestamp}",
+            "version": "${GITHUB_SHA}",
+            "sourceCodes": [{
+              "repository": "${GITHUB_REPOSITORY}",
+              "ref": "${GITHUB_REF}",
+              "reversion": {
+                "id": "${GITHUB_SHA}",
+                "author": "",
+                "message": "",
+                "timestamp": "0000-01-01T00:00:00Z"
+              }
+            }]
+          }
+        }
+        EOF
+        cat .docker/dist/buildInfo.json
+
+    - name: Build and push Docker images
+      env:
+        SHOULD_PUBLISH: ${{ github.event_name == 'push' && (github.event.ref == 'refs/heads/master' || github.event.ref == 'refs/heads/stage') }}
+      run: |
+        echo '' >> .docker/Dockerfile
+        echo "LABEL build.version="${GITHUB_SHA}" build.timestamp="${BUILD_TIMESTAMP}" build.source.repository="${GITHUB_REPOSITORY}" build.source.ref="${GITHUB_REF}" build.source.reversion="${GITHUB_SHA}"" >> .docker/Dockerfile
+        cat .docker/Dockerfile
+
+        registry=registry.cn-beijing.aliyuncs.com
+        imageName="${registry}/fundwit/gitlab-booster-ui:${GITHUB_SHA}"
+        echo "image name: $imageName"
+        echo "IMAGE_NAME=${imageName}" >> $GITHUB_ENV
+
+        docker build -t $imageName .docker
+
+        if [ "${SHOULD_PUBLISH}" == 'true' ]; then
+          docker login -u ${{secrets.ALIYUN_REGISTRY_USERNAME}} -p ${{secrets.ALIYUN_REGISTRY_TOKEN}} $registry
+          docker push $imageName
+        fi
