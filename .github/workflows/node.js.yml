@@ -17,6 +17,26 @@ jobs:
 
     - uses: actions/checkout@v2
 
+    - name: Generate Build Version basic
+      run: |
+        buildVersion=${GITHUB_SHA:0:10}
+        echo "BUILD_VERSION=${buildVersion}"
+        echo "BUILD_VERSION=${buildVersion}" >> $GITHUB_ENV
+
+    - name: Re-generate Build Version for branch push
+      if: ${{ github.event_name == 'push' && startsWith(github.event.ref, 'refs/heads/') }}
+      run: |
+        buildVersion=${GITHUB_REF##*/}.${GITHUB_SHA:0:10}
+        echo "BUILD_VERSION=${buildVersion}"
+        echo "BUILD_VERSION=${buildVersion}" >> $GITHUB_ENV
+
+    - name: Re-generate Build Version for branch tag
+      if: ${{ github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/') }}
+      run: |
+        buildVersion=${GITHUB_REF##*/}.${GITHUB_SHA:0:10}
+        echo "BUILD_VERSION=${buildVersion}"
+        echo "BUILD_VERSION=${buildVersion}" >> $GITHUB_ENV
+
     - name: Get dependencies
       run: |
         npm ci
@@ -46,7 +66,7 @@ jobs:
           "description": "web ui of gitlab-booster service",
           "buildInfo": {
             "buildTime": "${timestamp}",
-            "version": "${GITHUB_SHA}",
+            "version": "${BUILD_VERSION}",
             "sourceCodes": [{
               "repository": "${GITHUB_REPOSITORY}",
               "ref": "${GITHUB_REF}",
@@ -64,14 +84,14 @@ jobs:
 
     - name: Build and push Docker images
       env:
-        SHOULD_PUBLISH: ${{ github.event_name == 'push' && (github.event.ref == 'refs/heads/master' || github.event.ref == 'refs/heads/stage') }}
+        SHOULD_PUBLISH: ${{ github.event_name == 'push' && (github.event.ref == 'refs/heads/master' || github.event.ref == 'refs/heads/stage' || startsWith(github.event.ref, 'refs/tags/')) }}
       run: |
         echo '' >> .docker/Dockerfile
-        echo "LABEL build.version="${GITHUB_SHA}" build.timestamp="${BUILD_TIMESTAMP}" build.source.repository="${GITHUB_REPOSITORY}" build.source.ref="${GITHUB_REF}" build.source.reversion="${GITHUB_SHA}"" >> .docker/Dockerfile
+        echo "LABEL build.version="${BUILD_VERSION}" build.timestamp="${BUILD_TIMESTAMP}" build.source.repository="${GITHUB_REPOSITORY}" build.source.ref="${GITHUB_REF}" build.source.reversion="${GITHUB_SHA}"" >> .docker/Dockerfile
         cat .docker/Dockerfile
 
         registry=registry.cn-beijing.aliyuncs.com
-        imageName="${registry}/fundwit/gitlab-booster-ui:${GITHUB_SHA}"
+        imageName="${registry}/fundwit/gitlab-booster-ui:${BUILD_VERSION}"
         echo "image name: $imageName"
         echo "IMAGE_NAME=${imageName}" >> $GITHUB_ENV
 
