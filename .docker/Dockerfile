@@ -5,6 +5,7 @@ COPY nginx.default.conf /etc/nginx/conf.d/default.conf
 # EXPOSE 80
 
 COPY docker-entrypoint.sh /
+RUN chmod +x /docker-entrypoint.sh
 
 # 容器启动时使用 sed 命令将 default.conf 文件中的 {{API_ENDPOINT}} 占位符替换为对应的环境变量值
 ENTRYPOINT ["/docker-entrypoint.sh"]
